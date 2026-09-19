@@ -7,9 +7,9 @@ namespace EnvKeySender
 {
     public class AppSettings
     {
-        public bool CtrlModifier { get; set; } = true;
-        public bool ShiftModifier { get; set; } = true;
-        public bool AltModifier { get; set; } = true;
+        public bool CtrlModifier { get; set; } = false;
+        public bool ShiftModifier { get; set; } = false;
+        public bool AltModifier { get; set; } = false;
         public int MonitoredKey { get; set; } = (int)Keys.G;
         public string EnvVarName { get; set; } = "MY_SHORT_PASSWORD";
 

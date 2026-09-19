@@ -16,6 +16,7 @@ namespace EnvKeySender
         public MainForm()
         {
             Text = "EnvKeySender";
+            Icon = SystemIcons.Information;
             Size = new Size(360, 160);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
@@ -33,10 +34,10 @@ namespace EnvKeySender
 
             var keyOptions = new[]
             {
+                new KeyItem { Name = "G", Vk = (int)Keys.G, Ctrl = false, Shift = false, Alt = false },
                 new KeyItem { Name = "Ctrl+Shift+Alt+G", Vk = (int)Keys.G, Ctrl = true, Shift = true, Alt = true },
                 new KeyItem { Name = "F13", Vk = (int)Keys.F13, Ctrl = false, Shift = false, Alt = false },
-                new KeyItem { Name = "F14", Vk = (int)Keys.F14, Ctrl = false, Shift = false, Alt = false },
-                new KeyItem { Name = "F15", Vk = (int)Keys.F15, Ctrl = false, Shift = false, Alt = false }
+                new KeyItem { Name = "F14", Vk = (int)Keys.F14, Ctrl = false, Shift = false, Alt = false }
             };
 
             foreach (var option in keyOptions)
@@ -74,7 +75,7 @@ namespace EnvKeySender
             // Tray
             _trayIcon = new NotifyIcon();
             _trayIcon.Text = "EnvKeySender";
-            _trayIcon.Icon = SystemIcons.Application;
+            _trayIcon.Icon = SystemIcons.Information;
             var menu = new ContextMenuStrip();
             var settingsItem = new ToolStripMenuItem("設定を開く");
             settingsItem.Click += (s, e) => { ShowWindow(); };
@@ -102,6 +103,11 @@ namespace EnvKeySender
             _settings.EnvVarName = _envNameBox.Text?.Trim() ?? string.Empty;
             _settings.Save();
             ApplySettingsToHook();
+
+            var envStatus = ResolveEnvironmentVariable(_settings.EnvVarName, "on-save");
+            ErrorLogger.Write($"Settings saved: key={_settings.MonitoredKey}, ctrl={_settings.CtrlModifier}, shift={_settings.ShiftModifier}, alt={_settings.AltModifier}, env={_settings.EnvVarName}, resolved={envStatus.Found}, source={envStatus.Source ?? "none"}, length={envStatus.Value?.Length ?? 0}");
+            Hide();
+            ShowInTaskbar = false;
         }
 
         private void ApplySettingsToHook()
@@ -111,24 +117,70 @@ namespace EnvKeySender
             _hook.Triggered += Hook_Triggered;
         }
 
+        private (bool Found, string? Value, string? Source) ResolveEnvironmentVariable(string name, string context)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                ErrorLogger.Write($"Environment variable lookup skipped: name is empty, context={context}");
+                return (false, null, null);
+            }
+
+            string? value = null;
+            string? source = null;
+
+            foreach (var target in new[]
+            {
+                new { Name = "Process", Target = EnvironmentVariableTarget.Process },
+                new { Name = "User", Target = EnvironmentVariableTarget.User },
+                new { Name = "Machine", Target = EnvironmentVariableTarget.Machine }
+            })
+            {
+                var candidate = Environment.GetEnvironmentVariable(name, target.Target);
+                var found = !string.IsNullOrEmpty(candidate);
+                ErrorLogger.Write($"Environment variable lookup: name={name}, context={context}, source={target.Name}, found={found}, length={candidate?.Length ?? 0}");
+
+                if (found)
+                {
+                    value = candidate;
+                    source = target.Name;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(value))
+            {
+                ErrorLogger.Write($"Environment variable not found: name={name}, context={context}");
+                return (false, null, null);
+            }
+
+            ErrorLogger.Write($"Environment variable resolved: name={name}, context={context}, source={source}, length={value.Length}");
+            return (true, value, source);
+        }
+
         private void Hook_Triggered(object? sender, EventArgs e)
         {
             try
             {
                 var name = _settings.EnvVarName;
-                if (string.IsNullOrWhiteSpace(name)) return;
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    ErrorLogger.Write("Trigger ignored: environment variable name is empty.");
+                    return;
+                }
 
-                // Try Process -> User -> Machine
-                string? val = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Process);
-                if (string.IsNullOrEmpty(val)) val = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User);
-                if (string.IsNullOrEmpty(val)) val = Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine);
-                if (string.IsNullOrEmpty(val)) return;
+                var envStatus = ResolveEnvironmentVariable(name, "on-trigger");
+                if (!envStatus.Found || string.IsNullOrEmpty(envStatus.Value))
+                {
+                    ErrorLogger.Write($"Trigger aborted: environment variable not available, name={name}");
+                    return;
+                }
 
-                TextSender.SendText(val);
+                ErrorLogger.Write($"Trigger sending environment variable: name={name}, source={envStatus.Source ?? "unknown"}, length={envStatus.Value.Length}");
+                TextSender.SendText(envStatus.Value);
             }
-            catch
+            catch (Exception ex)
             {
-                // Do not log or expose secret values
+                ErrorLogger.WriteException(ex, $"Failed to send environment variable value for '{_settings.EnvVarName}'");
             }
         }
 
