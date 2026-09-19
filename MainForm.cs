@@ -29,9 +29,35 @@ namespace EnvKeySender
         private void InitializeComponents()
         {
             var lblKey = new Label() { Text = "監視するキー:", Location = new Point(12, 15), AutoSize = true };
-            _keyCombo = new ComboBox() { Location = new Point(110, 12), Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
-            for (int i = 1; i <= 24; i++) _keyCombo.Items.Add(new KeyItem { Name = $"F{i}", Vk = 0x6F + i /* 0x70=F1 */ });
-            _keyCombo.SelectedIndex = Math.Max(0, Math.Min(_keyCombo.Items.Count - 1, _settings.MonitoredKey - 0x6F - 1));
+            _keyCombo = new ComboBox() { Location = new Point(110, 12), Width = 220, DropDownStyle = ComboBoxStyle.DropDownList };
+
+            var keyOptions = new[]
+            {
+                new KeyItem { Name = "Ctrl+Shift+Alt+G", Vk = (int)Keys.G, Ctrl = true, Shift = true, Alt = true },
+                new KeyItem { Name = "F13", Vk = (int)Keys.F13, Ctrl = false, Shift = false, Alt = false },
+                new KeyItem { Name = "F14", Vk = (int)Keys.F14, Ctrl = false, Shift = false, Alt = false },
+                new KeyItem { Name = "F15", Vk = (int)Keys.F15, Ctrl = false, Shift = false, Alt = false }
+            };
+
+            foreach (var option in keyOptions)
+            {
+                _keyCombo.Items.Add(option);
+            }
+
+            var selectedIndex = 0;
+            for (int i = 0; i < _keyCombo.Items.Count; i++)
+            {
+                if (_keyCombo.Items[i] is KeyItem item &&
+                    item.Vk == _settings.MonitoredKey &&
+                    item.Ctrl == _settings.CtrlModifier &&
+                    item.Shift == _settings.ShiftModifier &&
+                    item.Alt == _settings.AltModifier)
+                {
+                    selectedIndex = i;
+                    break;
+                }
+            }
+            _keyCombo.SelectedIndex = selectedIndex;
 
             var lblEnv = new Label() { Text = "環境変数名:", Location = new Point(12, 50), AutoSize = true };
             _envNameBox = new TextBox() { Location = new Point(110, 47), Width = 200, Text = _settings.EnvVarName };
@@ -69,6 +95,9 @@ namespace EnvKeySender
             if (_keyCombo.SelectedItem is KeyItem ki)
             {
                 _settings.MonitoredKey = ki.Vk;
+                _settings.CtrlModifier = ki.Ctrl;
+                _settings.ShiftModifier = ki.Shift;
+                _settings.AltModifier = ki.Alt;
             }
             _settings.EnvVarName = _envNameBox.Text?.Trim() ?? string.Empty;
             _settings.Save();
@@ -78,7 +107,7 @@ namespace EnvKeySender
         private void ApplySettingsToHook()
         {
             _hook?.Dispose();
-            _hook = new KeyboardHook(_settings.MonitoredKey);
+            _hook = new KeyboardHook(_settings.MonitoredKey, _settings.CtrlModifier, _settings.ShiftModifier, _settings.AltModifier);
             _hook.Triggered += Hook_Triggered;
         }
 
@@ -151,6 +180,9 @@ namespace EnvKeySender
         {
             public string Name { get; set; } = string.Empty;
             public int Vk { get; set; }
+            public bool Ctrl { get; set; }
+            public bool Shift { get; set; }
+            public bool Alt { get; set; }
             public override string ToString() => Name;
         }
     }

@@ -1,13 +1,17 @@
 using System;
 using System.IO;
 using System.Text.Json;
+using System.Windows.Forms;
 
 namespace EnvKeySender
 {
     public class AppSettings
     {
-        public int MonitoredKey { get; set; } = 124; // F13 default (VK_F13 = 0x7C = 124)
-        public string EnvVarName { get; set; } = "MYKEY";
+        public bool CtrlModifier { get; set; } = true;
+        public bool ShiftModifier { get; set; } = true;
+        public bool AltModifier { get; set; } = true;
+        public int MonitoredKey { get; set; } = (int)Keys.G;
+        public string EnvVarName { get; set; } = "MY_SHORT_PASSWORD";
 
         private static string GetSettingsPath()
         {
@@ -32,7 +36,18 @@ namespace EnvKeySender
             {
                 var json = File.ReadAllText(path);
                 var s = JsonSerializer.Deserialize<AppSettings>(json);
-                return s ?? new AppSettings();
+                if (s == null) return new AppSettings();
+
+                // Backward compatibility for older settings files that only stored MonitoredKey.
+                if (s.MonitoredKey == 124 && !s.CtrlModifier && !s.ShiftModifier && !s.AltModifier)
+                {
+                    s.CtrlModifier = true;
+                    s.ShiftModifier = true;
+                    s.AltModifier = true;
+                    s.MonitoredKey = (int)Keys.G;
+                }
+
+                return s;
             }
             catch
             {
