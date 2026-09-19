@@ -1,0 +1,17 @@
+# Build
+bin/
+obj/
+
+# VS
+.vs/
+*.user
+*.suo
+
+# Rider
+.idea/
+
+# logs
+*.log
+
+# publish
+publish/
